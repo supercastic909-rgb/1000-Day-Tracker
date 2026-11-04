@@ -1,0 +1,145 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono, .tabular-nums {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.08);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.28);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.48);
+}
+
+/* Springy Day Box Transitions & States */
+.day-box {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.2s ease,
+              border-color 0.2s ease,
+              background-color 0.2s ease;
+  user-select: none;
+}
+.day-box:not(.day-future):hover {
+  transform: translateY(-3px) scale(1.015);
+}
+.day-box:not(.day-future):active {
+  transform: scale(0.95);
+}
+
+/* Gold Complete State (All 4 Tasks Done) with subtle animated sheen */
+@keyframes goldShimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.day-gold {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.22) 0%, rgba(245, 158, 11, 0.36) 50%, rgba(217, 119, 6, 0.25) 100%);
+  background-size: 200% 200%;
+  animation: goldShimmer 6s ease infinite;
+  border-color: #f59e0b !important;
+  box-shadow: 0 6px 20px -4px rgba(245, 158, 11, 0.28), inset 0 1px 0 rgba(254, 243, 199, 0.35);
+}
+
+html:not(.dark) .day-gold {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 55%, #fcd34d 100%);
+  background-size: 200% 200%;
+  animation: goldShimmer 6s ease infinite;
+  border-color: #d97706 !important;
+  box-shadow: 0 6px 16px -3px rgba(217, 119, 6, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+/* Today Highlight Ring */
+@keyframes todayPulseRing {
+  0%, 100% {
+    box-shadow: 0 0 0 2px #38bdf8, 0 8px 22px -4px rgba(56, 189, 248, 0.38);
+  }
+  50% {
+    box-shadow: 0 0 0 3px #0ea5e9, 0 10px 28px -2px rgba(14, 165, 233, 0.52);
+  }
+}
+
+.day-today {
+  animation: todayPulseRing 3s ease-in-out infinite;
+}
+
+/* Gentle Shake / Pulse for "Pick a task first" */
+@keyframes markerAttention {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.marker-attention {
+  animation: markerAttention 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  box-shadow: 0 0 0 2px #f43f5e, 0 0 28px rgba(244, 63, 94, 0.38) !important;
+}
+
+@keyframes popScale {
+  0% { transform: scale(0.92); opacity: 0; }
+  60% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pop {
+  animation: popScale 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes floatBadgeUp {
+  0% { transform: translateY(10px) scale(0.8); opacity: 0; }
+  25% { transform: translateY(-2px) scale(1.05); opacity: 1; }
+  80% { transform: translateY(-6px) scale(1); opacity: 1; }
+  100% { transform: translateY(-14px) scale(0.95); opacity: 0; }
+}
+
+.animate-float-badge {
+  animation: floatBadgeUp 1.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Battery Meter Terminal */
+.battery-cap {
+  width: 6px;
+  height: 14px;
+  border-radius: 0 3px 3px 0;
+}

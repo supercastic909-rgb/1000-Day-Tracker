@@ -1,0 +1,2290 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>1000-Day Habit Tracker</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <script>
+    if (typeof tailwind !== "undefined") tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    .hidden {
+      display: none !important;
+    }
+    #confetti-canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      overflow-x: hidden;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(148, 163, 184, 0.08);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.3);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.5);
+    }
+
+    /* Day Box Transitions & States */
+    .day-box {
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1),
+                  box-shadow 0.2s ease,
+                  border-color 0.2s ease,
+                  background-color 0.2s ease;
+      user-select: none;
+    }
+    .day-box:not(.day-future):hover {
+      transform: translateY(-2px);
+    }
+    .day-box:not(.day-future):active {
+      transform: scale(0.96);
+    }
+
+    /* Gold Complete State (All 4 Tasks Done) */
+    .day-gold {
+      background: linear-gradient(135deg, rgba(251, 191, 36, 0.24) 0%, rgba(245, 158, 11, 0.36) 55%, rgba(217, 119, 6, 0.28) 100%) !important;
+      border-color: #f59e0b !important;
+      box-shadow: 0 4px 16px -2px rgba(245, 158, 11, 0.28), inset 0 1px 0 rgba(254, 243, 199, 0.4);
+    }
+    html:not(.dark) .day-gold {
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 60%, #fcd34d 100%) !important;
+      border-color: #d97706 !important;
+      box-shadow: 0 4px 14px -2px rgba(217, 119, 6, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+
+    /* Missed Past Day State (0 Tasks Done in Past) */
+    .day-missed {
+      border-style: dashed !important;
+    }
+
+    /* Today Highlight Ring */
+    .day-today {
+      box-shadow: 0 0 0 2px #38bdf8, 0 8px 20px -4px rgba(56, 189, 248, 0.35) !important;
+    }
+
+    /* Gentle Shake / Pulse for "Pick a task first" */
+    @keyframes markerAttention {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-5px); }
+      40% { transform: translateX(5px); }
+      60% { transform: translateX(-3px); }
+      80% { transform: translateX(3px); }
+    }
+    .marker-attention {
+      animation: markerAttention 0.42s ease-in-out;
+      box-shadow: 0 0 0 2px #f43f5e, 0 0 24px rgba(244, 63, 94, 0.35) !important;
+    }
+
+    @keyframes popScale {
+      0% { transform: scale(0.92); }
+      50% { transform: scale(1.06); }
+      100% { transform: scale(1); }
+    }
+    .animate-pop {
+      animation: popScale 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* Battery Meter Terminal */
+    .battery-cap {
+      width: 6px;
+      height: 14px;
+      border-radius: 0 3px 3px 0;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen selection:bg-amber-500 selection:text-slate-950 transition-colors duration-200">
+
+  <!-- Full-Screen Celebration Confetti Canvas -->
+  <canvas id="confetti-canvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
+
+  <!-- Gentle Hint / Toast Banner (e.g., "Pick a task first") -->
+  <div id="gentle-hint-toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 -translate-y-2 transition-all duration-200">
+    <div id="gentle-hint-inner" class="px-4 py-2.5 rounded-full bg-slate-900/95 dark:bg-slate-800/95 text-white text-sm font-medium shadow-xl border border-slate-700/80 flex items-center gap-2.5 backdrop-blur-md">
+      <span id="gentle-hint-dot" class="w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse"></span>
+      <span id="gentle-hint-text">Pick a task first</span>
+    </div>
+  </div>
+
+  <!-- "Day Complete" Celebration Banner -->
+  <div id="day-complete-banner" class="fixed top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 scale-90 transition-all duration-300">
+    <div class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 shadow-2xl shadow-amber-500/30 border-2 border-amber-200 flex items-center gap-3.5">
+      <div class="w-10 h-10 rounded-xl bg-slate-950/15 flex items-center justify-center text-2xl">
+        👑
+      </div>
+      <div>
+        <div class="text-xs font-extrabold uppercase tracking-wider text-slate-900/80">All 4 Tasks Done</div>
+        <div id="day-complete-title" class="text-lg font-extrabold tracking-tight">Day Complete!</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Undo Prompt Bar (Shown when tapping an already-marked task on a day) -->
+  <div id="undo-bar" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 hidden">
+    <div class="px-4 py-3 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white shadow-2xl border border-slate-700 flex items-center gap-3.5 max-w-md w-[92vw] sm:w-auto">
+      <div id="undo-bar-dot" class="w-3 h-3 rounded-full shrink-0 bg-emerald-400"></div>
+      <div class="text-xs sm:text-sm flex-1">
+        <span id="undo-bar-message" class="font-medium">Already marked on Day 1.</span>
+      </div>
+      <button id="confirm-undo-btn" type="button" class="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-semibold transition">
+        Undo Mark
+      </button>
+      <button id="cancel-undo-btn" type="button" class="px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs font-medium transition">
+        Keep
+      </button>
+    </div>
+  </div>
+
+  <!-- Milestone Celebration Modal (7, 30, 100, 250, 500, 1000 Streak) -->
+  <div id="milestone-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4">
+    <div class="relative w-full max-w-md rounded-3xl bg-gradient-to-b from-amber-500/20 via-slate-900 to-slate-900 border-2 border-amber-400/60 p-6 sm:p-8 text-center shadow-2xl text-white animate-pop">
+      <div class="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-amber-300 via-amber-400 to-orange-500 flex items-center justify-center text-4xl shadow-lg shadow-amber-500/30">
+        🏆
+      </div>
+      <div id="milestone-badge" class="inline-block px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-widest mb-2">
+        Streak Milestone Unlocked
+      </div>
+      <h2 id="milestone-title" class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">
+        7-Day Gold Streak!
+      </h2>
+      <p id="milestone-message" class="text-sm text-slate-300 leading-relaxed mb-6">
+        One full week of completing all 4 daily habits without missing a beat. Momentum is on your side!
+      </p>
+      <button id="close-milestone-btn" type="button" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/25 transition">
+        Keep the Streak Alive
+      </button>
+    </div>
+  </div>
+
+  <!-- Top Header Bar (Laptop-First Command Header) -->
+  <header class="border-b border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand + Overall Battery Progress Meter -->
+      <div class="flex items-center gap-4 flex-wrap">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 font-extrabold text-sm shadow-md shadow-amber-500/20">
+            1K
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base sm:text-lg font-extrabold tracking-tight leading-none">1000-Day Habit Tracker</h1>
+              <span id="today-day-pill" class="px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 font-mono text-[11px] font-semibold">
+                Day 10
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">Pick a habit in the Marker panel, then single-tap any day box</p>
+          </div>
+        </div>
+
+        <!-- Battery-Style Overall Progress Meter ("Day X of 1000") -->
+        <div class="flex items-center gap-2.5 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-800" title="Overall Journey Progress & Gold Days Completed">
+          <div class="flex items-center">
+            <div class="relative w-36 sm:w-44 h-7 rounded-lg border-2 border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-950 p-0.5 flex items-center overflow-hidden">
+              <!-- Elapsed Day Fill -->
+              <div id="battery-elapsed-fill" class="h-full rounded-[4px] bg-gradient-to-r from-emerald-500 via-sky-500 to-amber-400 transition-all duration-500" style="width: 1%;"></div>
+              <!-- Battery Segment Grid Overlay -->
+              <div class="absolute inset-0 grid grid-cols-10 pointer-events-none">
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div class="border-r border-slate-900/10 dark:border-white/10"></div>
+                <div></div>
+              </div>
+              <span id="battery-text" class="absolute inset-0 flex items-center justify-center text-[11px] font-mono font-bold tracking-tight text-slate-900 dark:text-white drop-shadow-sm">
+                Day 10 of 1000
+              </span>
+            </div>
+            <div class="battery-cap bg-slate-400 dark:bg-slate-600"></div>
+          </div>
+          <div class="hidden xl:block text-[11px] leading-tight">
+            <div id="battery-sub-gold" class="font-semibold text-amber-600 dark:text-amber-400">0 Gold Days</div>
+            <div id="battery-sub-pct" class="text-slate-500 dark:text-slate-400">1.0% elapsed</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls: Start Date, Jump to Today, Sound, Backup, Theme -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Start Date Picker -->
+        <div class="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/90 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/80">
+          <label for="start-date-input" class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">Day 1:</label>
+          <input id="start-date-input" type="date" class="bg-transparent text-xs font-mono font-semibold text-slate-800 dark:text-slate-100 focus:outline-none cursor-pointer" />
+        </div>
+
+        <!-- Jump to Today Button -->
+        <button id="jump-today-btn" type="button" class="px-2.5 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/25 text-xs font-semibold transition flex items-center gap-1.5" title="Scroll to Today's Box">
+          <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+          <span>Today</span>
+        </button>
+
+        <!-- Past-Day Recovery Toggle (For restoring unsaved past days while keeping all 997 future days strictly locked) -->
+        <button id="future-lock-btn" type="button" class="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-xs font-semibold transition flex items-center gap-1.5" title="Unlock past days (Day 1 - Yesterday) if you completed them earlier and need to save them. Future days (Day 4+) stay strictly locked!">
+          <span id="future-lock-icon">🔒</span>
+          <span id="future-lock-label" class="hidden sm:inline">Past Days: Auto-Locked</span>
+        </button>
+
+        <!-- Sound Mute + Volume Slider -->
+        <div class="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/90 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/80">
+          <button id="mute-toggle-btn" type="button" class="text-sm leading-none hover:scale-110 transition" title="Mute / Unmute Sound Effects" aria-label="Toggle Mute">
+            🔊
+          </button>
+          <input id="volume-slider" type="range" min="0" max="100" value="65" class="w-14 sm:w-16 h-1.5 accent-amber-500 cursor-pointer" title="Sound Volume" aria-label="Sound Volume" />
+        </div>
+
+        <!-- Save Standalone App (.html) with Progress Baked In -->
+        <button id="save-standalone-btn" type="button" class="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 shadow-sm" title="Download this app as a standalone .html file with your progress saved inside">
+          <span>💻</span>
+          <span class="hidden sm:inline">Save App (.html)</span>
+        </button>
+
+        <!-- Export / Import JSON Button -->
+        <button id="open-backup-btn" type="button" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition flex items-center gap-1.5" title="Export or Import 1000-Day Backup JSON">
+          <span>💾</span>
+          <span class="hidden sm:inline">Backup</span>
+        </button>
+
+        <!-- Dark / Light Mode Button -->
+        <button id="theme-toggle-btn" type="button" class="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-sm transition" title="Toggle Dark / Light Mode" aria-label="Toggle Theme">
+          ☀️
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Laptop-First Workspace (Left Sticky Marker & Stats Sidebar + Right 1000-Day Grid) -->
+  <main class="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 flex flex-col lg:flex-row gap-5 items-start">
+
+    <!-- LEFT SIDEBAR (Sticky on Laptop, Fixed/Sticky Top Marker on Mobile) -->
+    <aside class="w-full lg:w-80 xl:w-[340px] shrink-0 lg:sticky lg:top-16 z-20 flex flex-col gap-4">
+
+      <!-- MARKER PANEL (Pick first, then tap) -->
+      <section id="marker-panel" class="rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-2 border-slate-200 dark:border-slate-800 p-3.5 sm:p-4 shadow-lg transition-all duration-200 sticky top-14 lg:static z-20">
+        <div class="flex items-center justify-between gap-2 mb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">1. Task Marker</span>
+            <span id="active-marker-badge" class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              Pick a task first
+            </span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button id="clear-marker-btn" type="button" class="hidden px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white bg-slate-100 dark:bg-slate-800 transition" title="Deselect Active Task (Esc)">
+              Clear
+            </button>
+            <button id="edit-tasks-btn" type="button" class="px-2 py-0.5 rounded-md text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:bg-sky-500/10 transition" title="Edit the 4 daily task names">
+              Rename
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 Task Buttons (2x2 on mobile for compactness, stacked 1-col on laptop with full stats) -->
+        <div id="marker-buttons-container" class="grid grid-cols-2 lg:grid-cols-1 gap-2">
+          <!-- Populated dynamically by renderMarkerPanel() -->
+        </div>
+
+        <!-- Explicit Save & Lock Status Bar inside Marker Panel -->
+        <div class="mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span id="save-status-dot" class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+            <span id="save-status-text" class="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">Auto-saved to browser</span>
+          </div>
+          <button id="manual-save-btn" type="button" class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] shadow-sm transition shrink-0">
+            ✓ Save &amp; Lock
+          </button>
+        </div>
+
+        <!-- Inline Task Rename Editor (Hidden by default) -->
+        <div id="task-rename-panel" class="hidden mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400">Customize Daily Task Names:</div>
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+              <input id="rename-input-0" type="text" maxlength="28" class="w-full px-2.5 py-1 rounded-lg text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-emerald-500" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0"></span>
+              <input id="rename-input-1" type="text" maxlength="28" class="w-full px-2.5 py-1 rounded-lg text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-sky-500" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0"></span>
+              <input id="rename-input-2" type="text" maxlength="28" class="w-full px-2.5 py-1 rounded-lg text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-violet-500" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></span>
+              <input id="rename-input-3" type="text" maxlength="28" class="w-full px-2.5 py-1 rounded-lg text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-amber-500" />
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button id="cancel-rename-btn" type="button" class="px-2.5 py-1 rounded-lg text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">Cancel</button>
+            <button id="save-rename-btn" type="button" class="px-3 py-1 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400">Save Names</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STREAK & MILESTONES CARD -->
+      <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Gold Streaks (All 4 Done)</h2>
+          <span class="text-xs text-amber-500 font-semibold">👑 4/4 Tasks</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5 mb-3.5">
+          <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25">
+            <div class="text-[11px] font-medium text-amber-700 dark:text-amber-300/80">Current Streak</div>
+            <div class="flex items-baseline gap-1 mt-0.5">
+              <span id="stat-current-streak" class="text-2xl font-extrabold font-mono text-amber-600 dark:text-amber-400">0</span>
+              <span class="text-xs text-slate-500 dark:text-slate-400">days</span>
+            </div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-800">
+            <div class="text-[11px] font-medium text-slate-500 dark:text-slate-400">Longest Streak</div>
+            <div class="flex items-baseline gap-1 mt-0.5">
+              <span id="stat-longest-streak" class="text-2xl font-extrabold font-mono text-slate-800 dark:text-slate-100">0</span>
+              <span class="text-xs text-slate-500 dark:text-slate-400">days</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Milestone Badges (7, 30, 100, 250, 500, 1000) -->
+        <div>
+          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+            <span>Streak Milestones</span>
+            <span id="next-milestone-label" class="font-mono text-amber-600 dark:text-amber-400">Next: 7d</span>
+          </div>
+          <div id="milestone-chips" class="grid grid-cols-6 gap-1">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- WEEKLY SUMMARY & PER-TASK COMPLETION STATS -->
+      <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-4">
+        <!-- Weekly Summary -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">This Week (Last 7 Days)</h2>
+            <span id="weekly-summary-count" class="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">0 / 28 tasks</span>
+          </div>
+          <div class="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden mb-2">
+            <div id="weekly-summary-bar" class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500 transition-all duration-300" style="width: 0%;"></div>
+          </div>
+          <div id="weekly-mini-days" class="grid grid-cols-7 gap-1 pt-0.5">
+            <!-- 7 mini day columns rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Per-Task Completion Percentage & Total Count -->
+        <div class="pt-3 border-t border-slate-200 dark:border-slate-800">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Per-Task Completion</h2>
+            <span id="elapsed-days-caption" class="text-[11px] text-slate-400 font-mono">vs elapsed & 1000d</span>
+          </div>
+          <div id="per-task-stats-list" class="space-y-2.5">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- RIGHT MAIN COLUMN: 100-Day Block Tabs + 100-Day Interactive Grid -->
+    <section class="flex-1 w-full min-w-0 space-y-3.5">
+
+      <!-- 10 Blocks of 100 Days Navigation Tabs -->
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5 shadow-sm">
+        <div class="flex items-center justify-between px-1 mb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">2. Browse 100-Day Blocks</span>
+            <span id="current-block-date-range" class="text-xs font-mono text-slate-500 dark:text-slate-400"></span>
+          </div>
+          <div class="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+            <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block"></span> 4/4 Gold</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-sky-500/40 border border-sky-400 inline-block"></span> Partial</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm border border-dashed border-slate-400 inline-block"></span> Missed</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-400 inline-block"></span> Note</span>
+          </div>
+        </div>
+
+        <div id="block-tabs-container" class="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10 gap-1.5">
+          <!-- 10 Block Tabs (Days 1-100 ... 901-1000) rendered by JS -->
+        </div>
+      </div>
+
+      <!-- 100-Day Grid Container -->
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 sm:p-4 shadow-sm">
+        <!-- Block Header Info -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 dark:border-slate-800/80">
+          <div class="flex items-center gap-2.5">
+            <h2 id="grid-block-title" class="text-base sm:text-lg font-extrabold tracking-tight">Days 1 – 100</h2>
+            <span id="grid-block-gold-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+              0 / 100 Gold Days
+            </span>
+          </div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <span>Single-tap box to mark selected task • Click</span>
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-medium">📝</span>
+            <span>on any box for Daily Note</span>
+          </div>
+        </div>
+
+        <!-- 100 Day-Boxes Grid (10 columns on xl laptop screens = 10x10 matrix) -->
+        <div id="days-grid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-10 gap-2 sm:gap-2.5">
+          <!-- 100 Day-Boxes dynamically rendered by renderGrid() -->
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- DAILY NOTE MODAL -->
+  <div id="note-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+    <div class="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-2xl animate-pop">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="note-modal-day-badge" class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 font-mono text-xs font-bold">Day 1</span>
+            <span id="note-modal-date" class="text-xs font-mono text-slate-500 dark:text-slate-400">Nov 1, 2026</span>
+          </div>
+          <h3 class="text-base font-bold mt-1">Daily Reflection Note</h3>
+        </div>
+        <button id="close-note-modal-btn" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white">
+          ✕
+        </button>
+      </div>
+
+      <!-- Day's Task Status Summary inside Note Modal -->
+      <div id="note-modal-tasks-preview" class="flex flex-wrap gap-1.5 mb-3">
+        <!-- Populated by JS -->
+      </div>
+
+      <label for="note-textarea" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+        A few words on how the day went:
+      </label>
+      <textarea id="note-textarea" rows="3" maxlength="280" placeholder="Wins, energy level, lessons learned, or a quick highlight..." class="w-full rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 p-3 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 resize-none"></textarea>
+      <div class="flex items-center justify-between mt-3">
+        <button id="clear-note-btn" type="button" class="text-xs font-medium text-rose-500 hover:text-rose-400 transition">
+          Delete Note
+        </button>
+        <div class="flex items-center gap-2">
+          <button id="cancel-note-btn" type="button" class="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            Cancel
+          </button>
+          <button id="save-note-btn" type="button" class="px-4 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm transition">
+            Save Note
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BACKUP EXPORT / IMPORT MODAL (JSON) -->
+  <div id="backup-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+    <div class="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-2xl animate-pop">
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 class="text-base sm:text-lg font-extrabold">Backup & Restore (JSON)</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">1000 days of progress should never be lost. Export or restore your data anytime.</p>
+        </div>
+        <button id="close-backup-modal-btn" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white">
+          ✕
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-4">
+        <button id="download-json-btn" type="button" class="py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition">
+          <span>⬇️</span>
+          <span>Download Backup (.json)</span>
+        </button>
+        <label for="upload-json-input" class="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition">
+          <span>⬆️</span>
+          <span>Import from .json File</span>
+          <input id="upload-json-input" type="file" accept=".json,application/json" class="hidden" />
+        </label>
+      </div>
+
+      <div class="mb-3">
+        <div class="flex items-center justify-between mb-1">
+          <label for="backup-json-textarea" class="text-xs font-semibold text-slate-500 dark:text-slate-400">Raw JSON Data (Copy or Paste to Restore):</label>
+          <button id="copy-json-btn" type="button" class="text-xs font-semibold text-sky-500 hover:text-sky-400">Copy JSON</button>
+        </div>
+        <textarea id="backup-json-textarea" rows="5" class="w-full rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 p-3 font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"></textarea>
+      </div>
+
+      <div id="backup-status-msg" class="text-xs font-medium text-emerald-500 mb-3 hidden"></div>
+
+      <div class="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
+        <button id="load-pasted-json-btn" type="button" class="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold transition">
+          Restore from Pasted JSON
+        </button>
+        <button id="close-backup-footer-btn" type="button" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script id="embedded-app-state" type="application/json">{}</script>
+  <script>
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. CONSTANTS & TASK DEFINITIONS
+      // =========================================================================
+      const STORAGE_KEY = 'habit_tracker_1000_v1';
+      const TOTAL_DAYS = 1000;
+      const BLOCK_SIZE = 100;
+      const MILESTONES = [
+        { days: 7, title: '7-Day Gold Streak!', msg: 'One full week of completing all 4 daily habits! You have built the spark of consistency.' },
+        { days: 30, title: '30-Day Gold Streak!', msg: 'One full month of all 4 habits done! Your daily rituals are turning into automatic identity.' },
+        { days: 100, title: '100-Day Gold Streak!', msg: 'A full 100-day block of unbreakable discipline! You are in rare company.' },
+        { days: 250, title: '250-Day Quarter-Millennium Streak!', msg: 'A quarter of your 1000-day journey completed at 100% intensity!' },
+        { days: 500, title: '500-Day Halfway Legend!', msg: 'Halfway to 1000 days without dropping a single day. Truly extraordinary focus.' },
+        { days: 1000, title: '1000-DAY GRAND MASTER!', msg: 'You completed the entire 1000-day challenge with a 1000-day streak. Unstoppable!' }
+      ];
+
+      const TASK_THEMES = [
+        {
+          id: 0,
+          defaultName: 'Exercise',
+          icon: '⚡',
+          colorHex: '#10b981', // Emerald
+          confettiColors: ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0', '#059669'],
+          pitchHz: 523.25, // C5
+          badgeBg: 'bg-emerald-500',
+          softBg: 'bg-emerald-500/15',
+          activeBorder: 'border-emerald-500 ring-2 ring-emerald-500/40',
+          textClass: 'text-emerald-600 dark:text-emerald-400'
+        },
+        {
+          id: 1,
+          defaultName: 'Skill building',
+          icon: '🧠',
+          colorHex: '#0ea5e9', // Sky
+          confettiColors: ['#0ea5e9', '#38bdf8', '#7dd3fc', '#bae6fd', '#0284c7'],
+          pitchHz: 587.33, // D5
+          badgeBg: 'bg-sky-500',
+          softBg: 'bg-sky-500/15',
+          activeBorder: 'border-sky-500 ring-2 ring-sky-500/40',
+          textClass: 'text-sky-600 dark:text-sky-400'
+        },
+        {
+          id: 2,
+          defaultName: 'Reading',
+          icon: '📖',
+          colorHex: '#8b5cf6', // Violet
+          confettiColors: ['#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe', '#7c3aed'],
+          pitchHz: 659.25, // E5
+          badgeBg: 'bg-violet-500',
+          softBg: 'bg-violet-500/15',
+          activeBorder: 'border-violet-500 ring-2 ring-violet-500/40',
+          textClass: 'text-violet-600 dark:text-violet-400'
+        },
+        {
+          id: 3,
+          defaultName: 'Networking',
+          icon: '🤝',
+          colorHex: '#f59e0b', // Amber
+          confettiColors: ['#f59e0b', '#fbbf24', '#fcd34d', '#fde68a', '#d97706'],
+          pitchHz: 783.99, // G5
+          badgeBg: 'bg-amber-500',
+          softBg: 'bg-amber-500/15',
+          activeBorder: 'border-amber-500 ring-2 ring-amber-500/40',
+          textClass: 'text-amber-600 dark:text-amber-400'
+        }
+      ];
+
+      // =========================================================================
+      // 2. DATE UTILITIES (2:00 AM Night Rollover Safe)
+      // =========================================================================
+      const DAY_ROLLOVER_HOUR = 2; // New day starts at 2:00 AM at night, not 12:00 AM midnight
+      function getTodayLocalISO() {
+        const now = new Date();
+        const shifted = new Date(now.getTime() - DAY_ROLLOVER_HOUR * 60 * 60 * 1000);
+        const y = shifted.getFullYear();
+        const m = String(shifted.getMonth() + 1).padStart(2, '0');
+        const d = String(shifted.getDate()).padStart(2, '0');
+        const sysISO = `${y}-${m}-${d}`;
+        // Ensure reference Today is at least 2026-11-03 (Day 3 when Day 1 is 2026-11-01) if device clock is behind
+        return sysISO < '2026-11-03' ? '2026-11-03' : sysISO;
+      }
+
+      function addDaysISO(isoDateStr, daysOffset) {
+        const parts = isoDateStr.split('-').map(Number);
+        const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+        dt.setDate(dt.getDate() + daysOffset);
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, '0');
+        const d = String(dt.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+
+      function diffDaysISO(startISO, targetISO) {
+        const s = startISO.split('-').map(Number);
+        const t = targetISO.split('-').map(Number);
+        const d1 = Date.UTC(s[0], s[1] - 1, s[2]);
+        const d2 = Date.UTC(t[0], t[1] - 1, t[2]);
+        return Math.round((d2 - d1) / 86400000);
+      }
+
+      function formatShortDate(isoDateStr, includeYear) {
+        const parts = isoDateStr.split('-').map(Number);
+        const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        if (includeYear) {
+          return `${months[dt.getMonth()]} ${dt.getDate()}, ${dt.getFullYear()}`;
+        }
+        return `${months[dt.getMonth()]} ${dt.getDate()}`;
+      }
+
+      // =========================================================================
+      // 3. APPLICATION STATE & STORAGE
+      // =========================================================================
+      function createDefaultState() {
+        // Start Day 1 from 1st November 2026 (2026-11-01)
+        const defaultStartISO = '2026-11-01';
+        return {
+          startDate: defaultStartISO,
+          userChangedStartDate: false,
+          lockFutureDays: true, // Past days auto-locked by default (with 1-click Recovery); Future days ALWAYS strictly locked so Day 1 (Nov 1, 2026) and onwards can always be marked regardless of system clock
+          taskNames: TASK_THEMES.map(t => t.defaultName),
+          // days[dayNum] = { tasks: [bool, bool, bool, bool], note: string }
+          days: {},
+          theme: 'dark',
+          volume: 0.65,
+          muted: false,
+          celebratedMilestones: []
+        };
+      }
+
+      let state = createDefaultState();
+      let selectedTaskIndex = null; // IMPORTANT: null on load so user picks a task first!
+      let currentBlockIndex = 0;    // 0 to 9 (10 blocks of 100 days)
+      let pendingUndo = null;       // { dayNum, taskIndex }
+      let activeNoteDay = null;     // dayNum currently being edited in note modal
+      let hintTimeout = null;
+      let bannerTimeout = null;
+
+      function applyParsedState(parsed) {
+        if (!parsed || typeof parsed !== 'object') return;
+        state.userChangedStartDate = Boolean(parsed.userChangedStartDate);
+        state.startDate = (state.userChangedStartDate && typeof parsed.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.startDate))
+          ? parsed.startDate
+          : '2026-11-01';
+        if (typeof parsed.lockFutureDays === 'boolean') {
+          state.lockFutureDays = parsed.lockFutureDays;
+        }
+        if (Array.isArray(parsed.taskNames) && parsed.taskNames.length === 4) {
+          state.taskNames = parsed.taskNames.map((n, i) => String(n || TASK_THEMES[i].defaultName).trim() || TASK_THEMES[i].defaultName);
+        }
+        if (parsed.days && typeof parsed.days === 'object') {
+          state.days = parsed.days;
+        }
+        if (parsed.theme === 'light' || parsed.theme === 'dark') {
+          state.theme = parsed.theme;
+        }
+        if (typeof parsed.volume === 'number') {
+          state.volume = Math.max(0, Math.min(1, parsed.volume));
+        }
+        if (typeof parsed.muted === 'boolean') {
+          state.muted = parsed.muted;
+        }
+        if (Array.isArray(parsed.celebratedMilestones)) {
+          state.celebratedMilestones = parsed.celebratedMilestones;
+        }
+      }
+
+      function loadState() {
+        let raw = null;
+        // Layer 1: Embedded JSON inside standalone saved HTML file
+        try {
+          const embeddedEl = document.getElementById('embedded-app-state');
+          if (embeddedEl && embeddedEl.textContent && embeddedEl.textContent.trim().length > 2) {
+            raw = embeddedEl.textContent.trim();
+          }
+        } catch (e) {}
+
+        // Layer 2: Browser localStorage (overrides embedded if newer)
+        try {
+          const lsRaw = localStorage.getItem(STORAGE_KEY);
+          if (lsRaw) raw = lsRaw;
+        } catch (e) {}
+
+        // Layer 3: window.name fallback (persists across reloads in sandboxed iframes where localStorage is blocked)
+        if (!raw) {
+          try {
+            if (window.name && window.name.startsWith('HT1000:')) {
+              raw = window.name.slice(7);
+            }
+          } catch (e) {}
+        }
+
+        // Layer 4: URL Hash fallback
+        if (!raw) {
+          try {
+            if (window.location.hash && window.location.hash.startsWith('#ht1000=')) {
+              raw = decodeURIComponent(window.location.hash.slice(8));
+            }
+          } catch (e) {}
+        }
+
+        if (!raw) {
+          try {
+            const ssRaw = sessionStorage.getItem(STORAGE_KEY);
+            if (ssRaw) raw = ssRaw;
+          } catch (e) {}
+        }
+
+        if (raw) {
+          try {
+            applyParsedState(JSON.parse(raw));
+          } catch (err) {
+            console.warn('State parse fallback:', err);
+          }
+        }
+
+        // Also check IndexedDB asynchronously in case localStorage was cleared but IndexedDB persisted
+        loadFromIndexedDB((idbRaw) => {
+          if (!raw && idbRaw) {
+            try {
+              applyParsedState(JSON.parse(idbRaw));
+              renderAll();
+            } catch (e) {}
+          }
+        });
+      }
+
+      // IndexedDB helper for resilient browser persistence even when localStorage is restricted
+      function saveToIndexedDB(serialized) {
+        try {
+          if (!window.indexedDB) return;
+          const req = window.indexedDB.open('HabitTracker1000DB', 1);
+          req.onupgradeneeded = (ev) => {
+            const db = ev.target.result;
+            if (!db.objectStoreNames.contains('kv')) {
+              db.createObjectStore('kv');
+            }
+          };
+          req.onsuccess = (ev) => {
+            try {
+              const db = ev.target.result;
+              const tx = db.transaction('kv', 'readwrite');
+              tx.objectStore('kv').put(serialized, STORAGE_KEY);
+            } catch (e) {}
+          };
+        } catch (e) {}
+      }
+
+      function loadFromIndexedDB(callback) {
+        try {
+          if (!window.indexedDB) return;
+          const req = window.indexedDB.open('HabitTracker1000DB', 1);
+          req.onupgradeneeded = (ev) => {
+            const db = ev.target.result;
+            if (!db.objectStoreNames.contains('kv')) {
+              db.createObjectStore('kv');
+            }
+          };
+          req.onsuccess = (ev) => {
+            try {
+              const db = ev.target.result;
+              const tx = db.transaction('kv', 'readonly');
+              const getReq = tx.objectStore('kv').get(STORAGE_KEY);
+              getReq.onsuccess = () => {
+                if (getReq.result && typeof getReq.result === 'string') {
+                  callback(getReq.result);
+                }
+              };
+            } catch (e) {}
+          };
+        } catch (e) {}
+      }
+
+      function updateSaveStatusIndicator(label) {
+        const dot = document.getElementById('save-status-dot');
+        const txt = document.getElementById('save-status-text');
+        if (!dot || !txt) return;
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        txt.textContent = label || `Saved (${hh}:${mm}:${ss})`;
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-ping';
+        setTimeout(() => {
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
+        }, 450);
+      }
+
+      function saveState(customLabel) {
+        const serialized = JSON.stringify(state);
+        // 1. Embedded DOM tag
+        try {
+          const embeddedEl = document.getElementById('embedded-app-state');
+          if (embeddedEl) embeddedEl.textContent = serialized;
+        } catch (e) {}
+        // 2. localStorage
+        try {
+          localStorage.setItem(STORAGE_KEY, serialized);
+        } catch (e) {}
+        // 3. sessionStorage
+        try {
+          sessionStorage.setItem(STORAGE_KEY, serialized);
+        } catch (e) {}
+        // 4. IndexedDB
+        saveToIndexedDB(serialized);
+        // 5. window.name
+        try {
+          window.name = 'HT1000:' + serialized;
+        } catch (e) {}
+        // 6. URL hash
+        try {
+          if (serialized.length < 32000) {
+            history.replaceState(null, '', '#ht1000=' + encodeURIComponent(serialized));
+          }
+        } catch (e) {}
+        updateSaveStatusIndicator(customLabel);
+      }
+
+      function getDayRecord(dayNum) {
+        const rec = state.days[dayNum];
+        if (!rec) {
+          return { tasks: [false, false, false, false], note: '' };
+        }
+        const tasks = Array.isArray(rec.tasks) && rec.tasks.length === 4
+          ? rec.tasks.map(Boolean)
+          : [false, false, false, false];
+        const note = typeof rec.note === 'string' ? rec.note : '';
+        return { tasks, note };
+      }
+
+      function setDayRecord(dayNum, tasks, note) {
+        const hasAnyTask = tasks.some(Boolean);
+        const trimmedNote = (note || '').trim();
+        if (!hasAnyTask && !trimmedNote) {
+          delete state.days[dayNum];
+        } else {
+          state.days[dayNum] = { tasks: [...tasks], note: trimmedNote };
+        }
+        saveState();
+      }
+
+      function getTodayDayNumber() {
+        const todayISO = getTodayLocalISO();
+        const rawDay = diffDaysISO(state.startDate, todayISO) + 1;
+        // If startDate is set to 2026-11-01 (or any date ahead of system clock), clamp Today to at least Day 1 so Day 1 is active and never locked out!
+        return Math.max(1, rawDay);
+      }
+
+      // =========================================================================
+      // 4. WEB AUDIO API PROCEDURAL SOUND ENGINE
+      // =========================================================================
+      let audioCtx = null;
+
+      function getAudioContext() {
+        if (state.muted || state.volume <= 0.001) return null;
+        if (!audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
+          }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+        return audioCtx;
+      }
+
+      // Bright Pop Sound when a single task is marked
+      function playTaskPopSound(taskIdx) {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const baseFreq = TASK_THEMES[taskIdx] ? TASK_THEMES[taskIdx].pitchHz : 523.25;
+        const vol = state.volume * 0.35;
+
+        // Crisp frequency-swept pop + harmonic sparkle
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(baseFreq * 0.72, now);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.45, now + 0.075);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.15, now + 0.14);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(vol, now + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.17);
+
+        // Overtones chime
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(baseFreq * 1.5, now + 0.03);
+        osc2.frequency.exponentialRampToValueAtTime(baseFreq * 2.0, now + 0.15);
+
+        gain2.gain.setValueAtTime(0.001, now + 0.03);
+        gain2.gain.linearRampToValueAtTime(vol * 0.55, now + 0.045);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.03);
+        osc2.stop(now + 0.2);
+      }
+
+      // Victory Fanfare when all 4 tasks are completed for a day
+      function playDayCompleteFanfare() {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const vol = state.volume * 0.32;
+
+        // Bright major arpeggio fanfare: C5 -> E5 -> G5 -> C6
+        const notes = [
+          { freq: 523.25, start: 0.00, dur: 0.13 },
+          { freq: 659.25, start: 0.10, dur: 0.13 },
+          { freq: 783.99, start: 0.20, dur: 0.14 },
+          { freq: 1046.50, start: 0.31, dur: 0.42 }
+        ];
+
+        notes.forEach(n => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(n.freq, now + n.start);
+
+          gain.gain.setValueAtTime(0.001, now + n.start);
+          gain.gain.linearRampToValueAtTime(vol, now + n.start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + n.start + n.dur);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + n.start);
+          osc.stop(now + n.start + n.dur + 0.02);
+        });
+      }
+
+      // Grand Unique Celebration Sound for 7, 30, 100, 250, 500, 1000 Streak Milestones
+      function playMilestoneGrandSound() {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const vol = state.volume * 0.34;
+
+        // Majestic harmonic sequence
+        const seq = [
+          { f: 440.00, t: 0.00, d: 0.16 },
+          { f: 554.37, t: 0.12, d: 0.16 },
+          { f: 659.25, t: 0.24, d: 0.16 },
+          { f: 880.00, t: 0.36, d: 0.28 },
+          { f: 659.25, t: 0.56, d: 0.14 },
+          { f: 880.00, t: 0.68, d: 0.55 },
+          { f: 1108.73, t: 0.68, d: 0.55 }
+        ];
+
+        seq.forEach(item => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+
+          // Lowpass filter for warm brassy tone
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(2400, now + item.t);
+
+          osc.frequency.setValueAtTime(item.f, now + item.t);
+          gain.gain.setValueAtTime(0.001, now + item.t);
+          gain.gain.linearRampToValueAtTime(vol * 0.7, now + item.t + 0.025);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + item.t + item.d);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + item.t);
+          osc.stop(now + item.t + item.d + 0.03);
+        });
+      }
+
+      // =========================================================================
+      // 5. CONFETTI & PAPER-PIECE PHYSICS ENGINE
+      // =========================================================================
+      const confettiCanvas = document.getElementById('confetti-canvas');
+      const cCtx = confettiCanvas.getContext('2d');
+      let particles = [];
+      let animFrameId = null;
+
+      function resizeConfettiCanvas() {
+        confettiCanvas.width = window.innerWidth;
+        confettiCanvas.height = window.innerHeight;
+      }
+      window.addEventListener('resize', resizeConfettiCanvas);
+      resizeConfettiCanvas();
+
+      // Mode 1: Task Marked — Party-popper burst with confetti & paper pieces flying up from bottom of screen
+      function launchTaskBottomPopper(taskIdx) {
+        const palette = TASK_THEMES[taskIdx]
+          ? TASK_THEMES[taskIdx].confettiColors
+          : ['#10b981', '#38bdf8', '#fbbf24'];
+        const w = confettiCanvas.width;
+        const h = confettiCanvas.height;
+        const count = 48;
+
+        for (let i = 0; i < count; i++) {
+          const spreadX = w * (0.25 + Math.random() * 0.5);
+          const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.85;
+          const speed = 13 + Math.random() * 13;
+          particles.push({
+            x: spreadX,
+            y: h + 6,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            gravity: 0.36 + Math.random() * 0.12,
+            drag: 0.985,
+            sizeW: 6 + Math.random() * 7,
+            sizeH: 4 + Math.random() * 6,
+            color: palette[i % palette.length],
+            rotation: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() - 0.5) * 0.25,
+            wobble: Math.random() * Math.PI * 2,
+            wobbleSpeed: 0.08 + Math.random() * 0.08,
+            shape: i % 3 === 0 ? 'circle' : 'paper',
+            alpha: 1,
+            decay: 0.008 + Math.random() * 0.007
+          });
+        }
+        startConfettiLoop();
+      }
+
+      // Mode 2: All 4 Tasks Done — Full-screen confetti shower
+      function launchDayCompleteShower(isMilestone) {
+        const palette = [
+          '#fbbf24', '#f59e0b', '#fef08a', '#10b981', '#38bdf8', '#a78bfa', '#fb7185'
+        ];
+        const w = confettiCanvas.width;
+        const h = confettiCanvas.height;
+        const total = isMilestone ? 180 : 110;
+
+        for (let i = 0; i < total; i++) {
+          const fromTop = i < total * 0.65;
+          particles.push({
+            x: Math.random() * w,
+            y: fromTop ? -15 - Math.random() * 120 : h + 10,
+            vx: (Math.random() - 0.5) * (fromTop ? 6 : 14),
+            vy: fromTop ? (3 + Math.random() * 6) : -(15 + Math.random() * 14),
+            gravity: fromTop ? 0.14 : 0.34,
+            drag: 0.99,
+            sizeW: 7 + Math.random() * 8,
+            sizeH: 5 + Math.random() * 6,
+            color: palette[i % palette.length],
+            rotation: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() - 0.5) * 0.22,
+            wobble: Math.random() * Math.PI * 2,
+            wobbleSpeed: 0.07 + Math.random() * 0.08,
+            shape: i % 4 === 0 ? 'circle' : 'paper',
+            alpha: 1,
+            decay: isMilestone ? 0.0045 : 0.0065
+          });
+        }
+        startConfettiLoop();
+      }
+
+      function startConfettiLoop() {
+        if (animFrameId) return;
+        function frame() {
+          cCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+          for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.vx *= p.drag;
+            p.vy = p.vy * p.drag + p.gravity;
+            p.wobble += p.wobbleSpeed;
+            p.x += p.vx + Math.sin(p.wobble) * 1.1;
+            p.y += p.vy;
+            p.rotation += p.rotSpeed;
+            p.alpha -= p.decay;
+
+            if (p.alpha <= 0 || p.y > confettiCanvas.height + 60) {
+              particles.splice(i, 1);
+              continue;
+            }
+
+            cCtx.save();
+            cCtx.globalAlpha = Math.max(0, p.alpha);
+            cCtx.translate(p.x, p.y);
+            cCtx.rotate(p.rotation);
+            cCtx.fillStyle = p.color;
+
+            if (p.shape === 'circle') {
+              cCtx.beginPath();
+              cCtx.arc(0, 0, p.sizeW * 0.45, 0, Math.PI * 2);
+              cCtx.fill();
+            } else {
+              // 3D tumbling paper piece effect via scaleY
+              const flip = Math.cos(p.wobble);
+              cCtx.scale(1, flip);
+              cCtx.fillRect(-p.sizeW / 2, -p.sizeH / 2, p.sizeW, p.sizeH);
+            }
+            cCtx.restore();
+          }
+
+          if (particles.length > 0) {
+            animFrameId = requestAnimationFrame(frame);
+          } else {
+            cCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+            animFrameId = null;
+          }
+        }
+        animFrameId = requestAnimationFrame(frame);
+      }
+
+      // =========================================================================
+      // 6. STREAK & STATS CALCULATIONS
+      // =========================================================================
+      function isDayAllFourDone(dayNum) {
+        const rec = state.days[dayNum];
+        return Boolean(rec && Array.isArray(rec.tasks) && rec.tasks.length === 4 && rec.tasks.every(Boolean));
+      }
+
+      function computeStreaks() {
+        const todayDayNum = getTodayDayNumber();
+        const maxCheckDay = Math.min(TOTAL_DAYS, Math.max(0, todayDayNum));
+
+        // Longest streak across all markable days (1..maxCheckDay)
+        let longest = 0;
+        let running = 0;
+        for (let d = 1; d <= maxCheckDay; d++) {
+          if (isDayAllFourDone(d)) {
+            running++;
+            if (running > longest) longest = running;
+          } else {
+            running = 0;
+          }
+        }
+
+        // Current streak: counts consecutive 4/4 days ending at Today (or Yesterday if Today is not yet 4/4)
+        let current = 0;
+        if (todayDayNum >= 1) {
+          let cursor = Math.min(TOTAL_DAYS, todayDayNum);
+          if (!isDayAllFourDone(cursor) && cursor > 1 && cursor === todayDayNum) {
+            cursor = todayDayNum - 1;
+          }
+          while (cursor >= 1 && isDayAllFourDone(cursor)) {
+            current++;
+            cursor--;
+          }
+        }
+
+        return { current, longest };
+      }
+
+      // =========================================================================
+      // 7. UI FEEDBACK BANNERS (GENTLE HINT, DAY COMPLETE, MILESTONE, UNDO)
+      // =========================================================================
+      function showGentleHint(message, pulseMarkerPanel) {
+        const toast = document.getElementById('gentle-hint-toast');
+        const textEl = document.getElementById('gentle-hint-text');
+        textEl.textContent = message;
+        toast.classList.remove('opacity-0', '-translate-y-2');
+        toast.classList.add('opacity-100', 'translate-y-0');
+
+        if (pulseMarkerPanel) {
+          const panel = document.getElementById('marker-panel');
+          panel.classList.remove('marker-attention');
+          void panel.offsetWidth;
+          panel.classList.add('marker-attention');
+          setTimeout(() => panel.classList.remove('marker-attention'), 650);
+        }
+
+        if (hintTimeout) clearTimeout(hintTimeout);
+        hintTimeout = setTimeout(() => {
+          toast.classList.add('opacity-0', '-translate-y-2');
+          toast.classList.remove('opacity-100', 'translate-y-0');
+        }, 2100);
+      }
+
+      function showDayCompleteBanner(dayNum) {
+        const banner = document.getElementById('day-complete-banner');
+        const title = document.getElementById('day-complete-title');
+        title.textContent = `Day ${dayNum} Complete!`;
+        banner.classList.remove('opacity-0', 'scale-90');
+        banner.classList.add('opacity-100', 'scale-100');
+
+        if (bannerTimeout) clearTimeout(bannerTimeout);
+        bannerTimeout = setTimeout(() => {
+          banner.classList.add('opacity-0', 'scale-90');
+          banner.classList.remove('opacity-100', 'scale-100');
+        }, 2800);
+      }
+
+      function triggerMilestoneModal(milestoneObj) {
+        const modal = document.getElementById('milestone-modal');
+        document.getElementById('milestone-badge').textContent = `${milestoneObj.days}-Day Streak Milestone`;
+        document.getElementById('milestone-title').textContent = milestoneObj.title;
+        document.getElementById('milestone-message').textContent = milestoneObj.msg;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      function openUndoPrompt(dayNum, taskIndex) {
+        pendingUndo = { mode: 'undo_task', dayNum, taskIndex };
+        const bar = document.getElementById('undo-bar');
+        const msg = document.getElementById('undo-bar-message');
+        const dot = document.getElementById('undo-bar-dot');
+        const confirmBtn = document.getElementById('confirm-undo-btn');
+        const taskName = state.taskNames[taskIndex];
+        dot.style.backgroundColor = TASK_THEMES[taskIndex].colorHex;
+        msg.textContent = `"${taskName}" is already saved on Day ${dayNum}. Undo?`;
+        confirmBtn.textContent = 'Undo Mark';
+        confirmBtn.className = 'px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-semibold transition';
+        bar.classList.remove('hidden');
+      }
+
+      function closeUndoPrompt() {
+        pendingUndo = null;
+        document.getElementById('undo-bar').classList.add('hidden');
+      }
+
+      function openPastRecoveryPrompt(dayNum) {
+        const rec = getDayRecord(dayNum);
+        const doneCount = rec.tasks.filter(Boolean).length;
+        pendingUndo = { mode: 'recover_past', dayNum };
+        const bar = document.getElementById('undo-bar');
+        const msg = document.getElementById('undo-bar-message');
+        const dot = document.getElementById('undo-bar-dot');
+        const confirmBtn = document.getElementById('confirm-undo-btn');
+        dot.style.backgroundColor = '#f59e0b';
+        msg.textContent = doneCount === 0
+          ? `Day ${dayNum} was detected as Missed & Auto-Locked. Did you complete it earlier?`
+          : `Day ${dayNum} (${doneCount}/4 saved) is Auto-Locked. Need to restore/update it?`;
+        confirmBtn.textContent = '🔓 Unlock Past Day to Save';
+        confirmBtn.className = 'px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition';
+        bar.classList.remove('hidden');
+      }
+
+      // =========================================================================
+      // 8. RENDER FUNCTIONS
+      // =========================================================================
+      function applyTheme() {
+        const htmlEl = document.documentElement;
+        const themeBtn = document.getElementById('theme-toggle-btn');
+        if (state.theme === 'dark') {
+          htmlEl.classList.add('dark');
+          themeBtn.textContent = '☀️';
+        } else {
+          htmlEl.classList.remove('dark');
+          themeBtn.textContent = '🌙';
+        }
+      }
+
+      function renderAudioControls() {
+        const muteBtn = document.getElementById('mute-toggle-btn');
+        const slider = document.getElementById('volume-slider');
+        slider.value = String(Math.round(state.volume * 100));
+        if (state.muted || state.volume === 0) {
+          muteBtn.textContent = '🔇';
+        } else if (state.volume < 0.45) {
+          muteBtn.textContent = '🔉';
+        } else {
+          muteBtn.textContent = '🔊';
+        }
+      }
+
+      function renderMarkerPanel() {
+        const container = document.getElementById('marker-buttons-container');
+        const badge = document.getElementById('active-marker-badge');
+        const clearBtn = document.getElementById('clear-marker-btn');
+        const todayDayNum = getTodayDayNumber();
+        const elapsedDays = Math.max(1, Math.min(TOTAL_DAYS, Math.max(1, todayDayNum)));
+
+        // Count per-task totals
+        const taskCounts = [0, 0, 0, 0];
+        Object.keys(state.days).forEach(k => {
+          const dNum = Number(k);
+          if (dNum >= 1 && dNum <= TOTAL_DAYS) {
+            const rec = state.days[dNum];
+            if (rec && Array.isArray(rec.tasks)) {
+              rec.tasks.forEach((done, idx) => {
+                if (done) taskCounts[idx]++;
+              });
+            }
+          }
+        });
+
+        if (selectedTaskIndex === null) {
+          badge.textContent = 'Pick a task first';
+          badge.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30';
+          clearBtn.classList.add('hidden');
+        } else {
+          const activeTheme = TASK_THEMES[selectedTaskIndex];
+          badge.textContent = `Active: ${state.taskNames[selectedTaskIndex]}`;
+          badge.className = `px-2.5 py-0.5 rounded-full text-[11px] font-bold ${activeTheme.softBg} ${activeTheme.textClass}`;
+          clearBtn.classList.remove('hidden');
+        }
+
+        container.innerHTML = TASK_THEMES.map((t, idx) => {
+          const isSelected = selectedTaskIndex === idx;
+          const count = taskCounts[idx];
+          const pctElapsed = Math.min(100, Math.round((count / elapsedDays) * 100));
+          return `
+            <button
+              type="button"
+              data-task-select="${idx}"
+              class="group relative w-full text-left p-2.5 sm:p-3 rounded-xl border transition-all duration-150 flex items-center justify-between gap-2 ${
+                isSelected
+                  ? `${t.softBg} ${t.activeBorder} shadow-md scale-[1.01]`
+                  : 'bg-slate-50/90 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+              }"
+            >
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0 shadow-sm text-white ${t.badgeBg}">
+                  ${t.icon}
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs sm:text-sm font-bold truncate text-slate-900 dark:text-white">${escapeHtml(state.taskNames[idx])}</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                    ${count}d done • ${pctElapsed}%
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <span class="hidden sm:inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-mono font-bold ${
+                  isSelected
+                    ? `${t.badgeBg} text-white`
+                    : 'bg-slate-200/80 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300'
+                }">
+                  ${idx + 1}
+                </span>
+                <span class="w-3 h-3 rounded-full border-2 ${
+                  isSelected
+                    ? `${t.badgeBg} border-white dark:border-slate-950 scale-110`
+                    : 'border-slate-300 dark:border-slate-600'
+                }"></span>
+              </div>
+            </button>
+          `;
+        }).join('');
+      }
+
+      function renderStatsAndHeader() {
+        const todayDayNum = getTodayDayNumber();
+        const clampedToday = Math.max(1, Math.min(TOTAL_DAYS, todayDayNum));
+
+        // Header Today Pill, Future Lock Button & Start Date Input
+        const startInput = document.getElementById('start-date-input');
+        if (startInput.value !== state.startDate) {
+          startInput.value = state.startDate;
+        }
+        const lockBtn = document.getElementById('future-lock-btn');
+        const lockIcon = document.getElementById('future-lock-icon');
+        const lockLabel = document.getElementById('future-lock-label');
+        if (lockBtn && lockIcon && lockLabel) {
+          // state.lockFutureDays === true means Past Days are Locked; false means Past Days Recovery Mode is open. Future days (Day > Today) are ALWAYS locked!
+          if (state.lockFutureDays) {
+            lockIcon.textContent = '🔒';
+            lockLabel.textContent = 'Past Days: Locked (Click to Recover)';
+            lockBtn.className = 'px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-xs font-semibold transition flex items-center gap-1.5';
+          } else {
+            lockIcon.textContent = '🛠️';
+            lockLabel.textContent = 'Past Recovery: ON (Click to Lock)';
+            lockBtn.className = 'px-2.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1.5';
+          }
+        }
+
+        const todayPill = document.getElementById('today-day-pill');
+        if (todayDayNum < 1) {
+          todayPill.textContent = `Starts in ${1 - todayDayNum}d`;
+        } else if (todayDayNum > TOTAL_DAYS) {
+          todayPill.textContent = 'Journey Complete (1000/1000)';
+        } else {
+          todayPill.textContent = `Today: Day ${todayDayNum}`;
+        }
+
+        // Count Gold Days & Per-Task Totals
+        let goldDaysCount = 0;
+        const taskCounts = [0, 0, 0, 0];
+        Object.keys(state.days).forEach(k => {
+          const dNum = Number(k);
+          if (dNum >= 1 && dNum <= TOTAL_DAYS) {
+            const rec = state.days[dNum];
+            if (rec && Array.isArray(rec.tasks)) {
+              let c = 0;
+              rec.tasks.forEach((done, idx) => {
+                if (done) {
+                  taskCounts[idx]++;
+                  c++;
+                }
+              });
+              if (c === 4) goldDaysCount++;
+            }
+          }
+        });
+
+        // Battery Progress Meter ("Day X of 1000")
+        const displayDayX = todayDayNum < 1 ? 0 : Math.min(TOTAL_DAYS, todayDayNum);
+        const batteryPct = Math.max(0, Math.min(100, (displayDayX / TOTAL_DAYS) * 100));
+        document.getElementById('battery-elapsed-fill').style.width = `${Math.max(2, batteryPct)}%`;
+        document.getElementById('battery-text').textContent = `Day ${displayDayX} of 1000`;
+        document.getElementById('battery-sub-gold').textContent = `${goldDaysCount} Gold Day${goldDaysCount === 1 ? '' : 's'} 👑`;
+        document.getElementById('battery-sub-pct').textContent = `${batteryPct.toFixed(1)}% of 1000d`;
+
+        // Streaks & Milestones
+        const { current, longest } = computeStreaks();
+        document.getElementById('stat-current-streak').textContent = String(current);
+        document.getElementById('stat-longest-streak').textContent = String(longest);
+
+        const nextMilestone = MILESTONES.find(m => m.days > current);
+        document.getElementById('next-milestone-label').textContent = nextMilestone
+          ? `Next: ${nextMilestone.days}d`
+          : 'All Unlocked! 🏆';
+
+        const chipsContainer = document.getElementById('milestone-chips');
+        chipsContainer.innerHTML = MILESTONES.map(m => {
+          const unlocked = longest >= m.days || current >= m.days;
+          return `
+            <button
+              type="button"
+              data-milestone-preview="${m.days}"
+              title="${unlocked ? `Unlocked: ${m.title} (Click to celebrate!)` : `Reach a ${m.days}-day streak of all 4 tasks`}"
+              class="py-1.5 px-1 rounded-lg font-mono text-[11px] font-bold border text-center transition ${
+                unlocked
+                  ? 'bg-amber-500/20 border-amber-400 text-amber-600 dark:text-amber-300 shadow-sm hover:scale-105'
+                  : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 hover:border-slate-400'
+              }"
+            >
+              ${unlocked ? '🏆' : ''}${m.days}d
+            </button>
+          `;
+        }).join('');
+
+        // Weekly Summary (Last 7 days ending at Today, or Days 1..7 if early)
+        const weekEndDay = todayDayNum >= 1 ? Math.min(TOTAL_DAYS, todayDayNum) : 7;
+        const weekStartDay = Math.max(1, weekEndDay - 6);
+        let weeklyDoneTasks = 0;
+        const miniDaysHtml = [];
+        for (let i = 0; i < 7; i++) {
+          const dNum = weekStartDay + i;
+          const rec = getDayRecord(dNum);
+          const doneCount = rec.tasks.filter(Boolean).length;
+          weeklyDoneTasks += doneCount;
+          const isToday = dNum === todayDayNum;
+          const heightPct = (doneCount / 4) * 100;
+          miniDaysHtml.push(`
+            <div class="flex flex-col items-center gap-1" title="Day ${dNum}: ${doneCount}/4 tasks">
+              <div class="w-full h-9 rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5 flex items-end overflow-hidden border ${
+                isToday ? 'border-sky-400' : 'border-transparent'
+              }">
+                <div class="w-full rounded-[4px] transition-all duration-300 ${
+                  doneCount === 4 ? 'bg-amber-400' : 'bg-emerald-500'
+                }" style="height: ${Math.max(10, heightPct)}%; opacity: ${doneCount === 0 ? 0.15 : 1};"></div>
+              </div>
+              <span class="text-[10px] font-mono ${isToday ? 'font-bold text-sky-500' : 'text-slate-400'}">D${dNum}</span>
+            </div>
+          `);
+        }
+        const maxPossibleWeek = 28;
+        const weekPct = Math.min(100, Math.round((weeklyDoneTasks / maxPossibleWeek) * 100));
+        document.getElementById('weekly-summary-count').textContent = `${weeklyDoneTasks} / ${maxPossibleWeek} tasks`;
+        document.getElementById('weekly-summary-bar').style.width = `${weekPct}%`;
+        document.getElementById('weekly-mini-days').innerHTML = miniDaysHtml.join('');
+
+        // Per-Task Completion Percentage & Total Count
+        const elapsedDenom = Math.max(1, clampedToday);
+        document.getElementById('elapsed-days-caption').textContent = `of ${elapsedDenom} elapsed days`;
+        const perTaskEl = document.getElementById('per-task-stats-list');
+        perTaskEl.innerHTML = TASK_THEMES.map((t, idx) => {
+          const total = taskCounts[idx];
+          const pctElapsed = Math.min(100, Math.round((total / elapsedDenom) * 100));
+          const pct1000 = ((total / TOTAL_DAYS) * 100).toFixed(1);
+          return `
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="font-semibold flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full ${t.badgeBg}"></span>
+                  <span>${escapeHtml(state.taskNames[idx])}</span>
+                </span>
+                <span class="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                  <strong>${total}</strong> days (${pctElapsed}% • ${pct1000}% of 1K)
+                </span>
+              </div>
+              <div class="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div class="h-full rounded-full ${t.badgeBg} transition-all duration-300" style="width: ${pctElapsed}%;"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderBlockTabs() {
+        const container = document.getElementById('block-tabs-container');
+        const todayDayNum = getTodayDayNumber();
+        const tabsHtml = [];
+
+        for (let b = 0; b < 10; b++) {
+          const startDay = b * BLOCK_SIZE + 1;
+          const endDay = (b + 1) * BLOCK_SIZE;
+          const isCurrent = b === currentBlockIndex;
+          const hasToday = todayDayNum >= startDay && todayDayNum <= endDay;
+
+          let goldInBlock = 0;
+          for (let d = startDay; d <= endDay; d++) {
+            if (isDayAllFourDone(d)) goldInBlock++;
+          }
+
+          tabsHtml.push(`
+            <button
+              type="button"
+              data-block-tab="${b}"
+              class="relative p-2 rounded-xl border text-left transition-all ${
+                isCurrent
+                  ? 'bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950 border-slate-900 dark:border-amber-400 shadow-sm font-bold'
+                  : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+              }"
+            >
+              <div class="flex items-center justify-between gap-1">
+                <span class="font-mono text-[11px] font-bold">${startDay}–${endDay}</span>
+                ${hasToday ? '<span class="w-2 h-2 rounded-full bg-sky-400 shrink-0" title="Contains Today"></span>' : ''}
+              </div>
+              <div class="text-[10px] opacity-80 font-mono mt-0.5 flex items-center justify-between">
+                <span>👑 ${goldInBlock}</span>
+                <span>${goldInBlock}%</span>
+              </div>
+            </button>
+          `);
+        }
+
+        container.innerHTML = tabsHtml.join('');
+
+        // Update block range header info
+        const blockStart = currentBlockIndex * BLOCK_SIZE + 1;
+        const blockEnd = (currentBlockIndex + 1) * BLOCK_SIZE;
+        const startISO = addDaysISO(state.startDate, blockStart - 1);
+        const endISO = addDaysISO(state.startDate, blockEnd - 1);
+        document.getElementById('current-block-date-range').textContent =
+          `${formatShortDate(startISO, true)} → ${formatShortDate(endISO, true)}`;
+      }
+
+      function renderGrid() {
+        const gridEl = document.getElementById('days-grid');
+        const blockStart = currentBlockIndex * BLOCK_SIZE + 1;
+        const blockEnd = (currentBlockIndex + 1) * BLOCK_SIZE;
+        const todayDayNum = getTodayDayNumber();
+
+        let blockGoldCount = 0;
+        const boxesHtml = [];
+
+        for (let dayNum = blockStart; dayNum <= blockEnd; dayNum++) {
+          const rec = getDayRecord(dayNum);
+          const doneCount = rec.tasks.filter(Boolean).length;
+          const isAllDone = doneCount === 4;
+          if (isAllDone) blockGoldCount++;
+
+          const isToday = dayNum === todayDayNum;
+          const isPast = dayNum < todayDayNum;
+          const isFuture = dayNum > todayDayNum; // STRICT RULE: All days after Today (e.g. Day 4..1000) are ALWAYS locked!
+          const isPastLocked = isPast && state.lockFutureDays;
+          const isMissed = isPast && doneCount === 0;
+          const hasNote = rec.note.trim().length > 0;
+          const dateISO = addDaysISO(state.startDate, dayNum - 1);
+          const dateLabel = formatShortDate(dateISO, false);
+
+          // Check if currently selected task is already marked on this day
+          const selectedTaskDoneHere = selectedTaskIndex !== null && rec.tasks[selectedTaskIndex];
+
+          let boxStateClasses = 'bg-slate-50/90 dark:bg-slate-800/50 border-slate-200/90 dark:border-slate-800';
+          if (isAllDone) {
+            boxStateClasses = 'day-gold';
+          } else if (doneCount > 0) {
+            boxStateClasses = 'bg-sky-500/[0.06] dark:bg-sky-500/[0.09] border-sky-500/35 dark:border-sky-500/40';
+          } else if (isMissed) {
+            boxStateClasses = 'day-missed bg-rose-500/[0.06] dark:bg-rose-950/30 border-rose-400/50 dark:border-rose-800/60 opacity-85';
+          } else if (isFuture) {
+            boxStateClasses = 'day-future bg-slate-100/30 dark:bg-slate-900/25 border-slate-200/50 dark:border-slate-800/50 opacity-45 cursor-not-allowed';
+          }
+
+          if (isToday) {
+            boxStateClasses += ' day-today';
+          }
+
+          // Partial fill bar width (25%, 50%, 75%, 100%)
+          const fillPct = (doneCount / 4) * 100;
+
+          // 4 Task Indicators
+          const indicatorsHtml = TASK_THEMES.map((t, tIdx) => {
+            const filled = rec.tasks[tIdx];
+            const isHighlightedSlot = selectedTaskIndex === tIdx && !isFuture;
+            return `
+              <span
+                class="h-2 flex-1 rounded-full transition-all duration-200 ${
+                  filled
+                    ? `${t.badgeBg} shadow-sm`
+                    : isHighlightedSlot
+                      ? 'bg-slate-300 dark:bg-slate-700 ring-1 ring-slate-400 dark:ring-slate-500'
+                      : 'bg-slate-200 dark:bg-slate-700/70'
+                }"
+                title="${escapeHtml(state.taskNames[tIdx])}: ${filled ? 'Done' : 'Not marked'}"
+              ></span>
+            `;
+          }).join('');
+
+          boxesHtml.push(`
+            <div
+              id="day-box-${dayNum}"
+              data-day-box="${dayNum}"
+              role="button"
+              tabindex="0"
+              aria-label="Day ${dayNum}, ${dateLabel}, ${doneCount} of 4 tasks done"
+              class="day-box relative rounded-xl border p-2.5 flex flex-col justify-between min-h-[92px] cursor-pointer overflow-hidden ${boxStateClasses}"
+            >
+              <!-- Subtle Partial Fill Bar at bottom edge -->
+              ${doneCount > 0 && doneCount < 4 ? `
+                <div class="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-emerald-500 via-sky-500 to-violet-500 transition-all duration-300" style="width: ${fillPct}%;"></div>
+              ` : ''}
+
+              <!-- Top Row: Day Number + Crown/Today/Note Action -->
+              <div class="flex items-start justify-between gap-1">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1">
+                    <span class="font-mono text-xs font-extrabold tracking-tight truncate ${
+                      isAllDone ? 'text-amber-950 dark:text-amber-200' : 'text-slate-800 dark:text-slate-100'
+                    }">Day ${dayNum}</span>
+                  </div>
+                  <div class="flex items-center gap-1 text-[10px] font-mono ${
+                    isAllDone ? 'text-amber-900/80 dark:text-amber-200/80 font-medium' : 'text-slate-400 dark:text-slate-500'
+                  }">
+                    <span class="truncate">${dateLabel}</span>
+                    ${isToday ? '<span class="px-1 py-0.2 rounded bg-sky-500 text-white font-mono text-[8px] font-bold uppercase shrink-0">Today</span>' : ''}
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-0.5 shrink-0 z-10">
+                  ${isAllDone ? '<span class="text-sm leading-none" title="All 4 tasks completed!">👑</span>' : ''}
+                  <button
+                    type="button"
+                    data-note-btn="${dayNum}"
+                    title="${hasNote ? `Note: ${escapeHtml(rec.note)}` : `Add note for Day ${dayNum}`}"
+                    class="relative p-1 rounded-md hover:bg-slate-900/10 dark:hover:bg-white/10 text-[11px] leading-none transition"
+                  >
+                    <span class="${hasNote ? 'opacity-100' : 'opacity-40 hover:opacity-90'}">📝</span>
+                    ${hasNote ? '<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"></span>' : ''}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Middle Status Micro-Cue -->
+              <div class="my-1 flex items-center justify-between text-[10px]">
+                ${isAllDone ? `
+                  <span class="font-bold text-amber-800 dark:text-amber-300">${isPastLocked ? '🔒 4/4 Saved' : '★ 4/4 Gold'}</span>
+                ` : doneCount > 0 ? `
+                  <span class="font-semibold text-sky-600 dark:text-sky-400">${isPastLocked ? `🔒 ${doneCount}/4 Saved` : `${doneCount}/4 done`}</span>
+                ` : isMissed ? `
+                  <span class="font-semibold text-rose-500 dark:text-rose-400">${isPastLocked ? '🔒 Missed' : '⚠️ Recover'}</span>
+                ` : isFuture ? `
+                  <span class="font-mono text-slate-400 dark:text-slate-600">🔒 Locked</span>
+                ` : `
+                  <span class="font-semibold text-emerald-600 dark:text-emerald-400">🔓 Open Today</span>
+                `}
+                ${selectedTaskDoneHere ? '<span class="text-[9px] font-mono px-1 rounded bg-slate-900/10 dark:bg-white/10">✓ Saved</span>' : ''}
+              </div>
+
+              <!-- Bottom 4 Task Indicators -->
+              <div class="flex items-center gap-1 pt-1">
+                ${indicatorsHtml}
+              </div>
+            </div>
+          `);
+        }
+
+        gridEl.innerHTML = boxesHtml.join('');
+        document.getElementById('grid-block-title').textContent = `Days ${blockStart} – ${blockEnd}`;
+        document.getElementById('grid-block-gold-badge').textContent = `${blockGoldCount} / 100 Gold Days`;
+      }
+
+      function renderAll() {
+        applyTheme();
+        renderAudioControls();
+        renderMarkerPanel();
+        renderStatsAndHeader();
+        renderBlockTabs();
+        renderGrid();
+      }
+
+      // =========================================================================
+      // 9. DAY-BOX TAP HANDLER (PICK FIRST, THEN SINGLE TAP)
+      // =========================================================================
+      function handleDayBoxTap(dayNum) {
+        const todayDayNum = getTodayDayNumber();
+
+        // 1. STRICT FUTURE LOCK: Days after Today (e.g. Day 4 to Day 1000) can NEVER be marked ahead of time!
+        if (dayNum > todayDayNum) {
+          showGentleHint(`🔒 Day ${dayNum} is locked! Only Today (Day ${todayDayNum}) is unlocked—future days unlock when their date arrives.`, false);
+          return;
+        }
+
+        // 2. INTELLIGENT PAST-DAY LOCK & RECOVERY:
+        // Past days (Day 1 to Yesterday) auto-lock when the day ends. If the user taps a locked past day, offer 1-click Past Recovery in case their earlier mark didn't save!
+        if (dayNum < todayDayNum && state.lockFutureDays) {
+          openPastRecoveryPrompt(dayNum);
+          return;
+        }
+
+        // 3. If no task is selected in the Marker panel, show gentle hint
+        if (selectedTaskIndex === null) {
+          showGentleHint('Pick a task first (select habit 1–4 on the left)', true);
+          return;
+        }
+
+        const rec = getDayRecord(dayNum);
+        const alreadyDone = rec.tasks[selectedTaskIndex];
+
+        // 3. If already marked for the selected task, offer Undo (no sound or animation)
+        if (alreadyDone) {
+          openUndoPrompt(dayNum, selectedTaskIndex);
+          return;
+        }
+
+        // 4. Mark the selected task as DONE with ONE single tap!
+        closeUndoPrompt();
+        rec.tasks[selectedTaskIndex] = true;
+        setDayRecord(dayNum, rec.tasks, rec.note);
+
+        const newDoneCount = rec.tasks.filter(Boolean).length;
+        const { current } = computeStreaks();
+
+        // Re-render UI immediately
+        renderMarkerPanel();
+        renderStatsAndHeader();
+        renderBlockTabs();
+        renderGrid();
+
+        // Pulse the tapped box
+        const boxEl = document.getElementById(`day-box-${dayNum}`);
+        if (boxEl) {
+          boxEl.classList.add('animate-pop');
+        }
+
+        // 5. Trigger Reward Animations & Web Audio API Sound (once per tap)
+        const hitMilestone = newDoneCount === 4
+          ? MILESTONES.find(m => m.days === current)
+          : null;
+
+        if (hitMilestone) {
+          if (!state.celebratedMilestones.includes(hitMilestone.days)) {
+            state.celebratedMilestones.push(hitMilestone.days);
+            saveState();
+          }
+          playMilestoneGrandSound();
+          launchDayCompleteShower(true);
+          showDayCompleteBanner(dayNum);
+          triggerMilestoneModal(hitMilestone);
+        } else if (newDoneCount === 4) {
+          playDayCompleteFanfare();
+          launchDayCompleteShower(false);
+          showDayCompleteBanner(dayNum);
+        } else {
+          playTaskPopSound(selectedTaskIndex);
+          launchTaskBottomPopper(selectedTaskIndex);
+        }
+      }
+
+      // =========================================================================
+      // 10. DAILY NOTE MODAL LOGIC
+      // =========================================================================
+      function openNoteModal(dayNum) {
+        activeNoteDay = dayNum;
+        const rec = getDayRecord(dayNum);
+        const dateISO = addDaysISO(state.startDate, dayNum - 1);
+
+        document.getElementById('note-modal-day-badge').textContent = `Day ${dayNum}`;
+        document.getElementById('note-modal-date').textContent = formatShortDate(dateISO, true);
+        document.getElementById('note-textarea').value = rec.note;
+
+        const tasksPreview = document.getElementById('note-modal-tasks-preview');
+        tasksPreview.innerHTML = TASK_THEMES.map((t, idx) => {
+          const done = rec.tasks[idx];
+          return `
+            <span class="px-2 py-0.5 rounded-md text-[11px] font-medium flex items-center gap-1 ${
+              done
+                ? `${t.softBg} ${t.textClass} border border-current/20`
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+            }">
+              <span>${t.icon}</span>
+              <span>${escapeHtml(state.taskNames[idx])}: ${done ? 'Done' : '—'}</span>
+            </span>
+          `;
+        }).join('');
+
+        const modal = document.getElementById('note-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        setTimeout(() => document.getElementById('note-textarea').focus(), 40);
+      }
+
+      function closeNoteModal() {
+        activeNoteDay = null;
+        const modal = document.getElementById('note-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+
+      function saveActiveNote() {
+        if (activeNoteDay === null) return;
+        const rec = getDayRecord(activeNoteDay);
+        const text = document.getElementById('note-textarea').value.trim();
+        setDayRecord(activeNoteDay, rec.tasks, text);
+        closeNoteModal();
+        renderGrid();
+      }
+
+      // =========================================================================
+      // 11. JUMP TO TODAY & AUTO-SCROLL ON LOAD
+      // =========================================================================
+      function scrollToTodayBox(smooth) {
+        const todayDayNum = getTodayDayNumber();
+        const targetDay = Math.max(1, Math.min(TOTAL_DAYS, todayDayNum));
+        const targetBlock = Math.floor((targetDay - 1) / BLOCK_SIZE);
+
+        if (currentBlockIndex !== targetBlock) {
+          currentBlockIndex = targetBlock;
+          renderBlockTabs();
+          renderGrid();
+        }
+
+        requestAnimationFrame(() => {
+          const el = document.getElementById(`day-box-${targetDay}`);
+          if (el) {
+            el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+          }
+        });
+      }
+
+      // =========================================================================
+      // 12. ESCAPE HTML HELPER
+      // =========================================================================
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      // =========================================================================
+      // 13. EVENT LISTENERS & WIRING
+      // =========================================================================
+      function setupEventListeners() {
+        // Marker task selection buttons (delegated)
+        document.getElementById('marker-buttons-container').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-task-select]');
+          if (!btn) return;
+          const idx = Number(btn.getAttribute('data-task-select'));
+          selectedTaskIndex = selectedTaskIndex === idx ? null : idx;
+          closeUndoPrompt();
+          renderMarkerPanel();
+          renderGrid();
+        });
+
+        // Clear selected task button
+        document.getElementById('clear-marker-btn').addEventListener('click', () => {
+          selectedTaskIndex = null;
+          closeUndoPrompt();
+          renderMarkerPanel();
+          renderGrid();
+        });
+
+        // Rename Tasks Panel Toggle & Live Auto-Save
+        const renamePanel = document.getElementById('task-rename-panel');
+        let renameBackupNames = [...state.taskNames];
+
+        function commitTaskRenames() {
+          for (let i = 0; i < 4; i++) {
+            const val = document.getElementById(`rename-input-${i}`).value.trim();
+            state.taskNames[i] = val || TASK_THEMES[i].defaultName;
+          }
+          saveState();
+          renderMarkerPanel();
+          renderStatsAndHeader();
+          renderGrid();
+        }
+
+        for (let i = 0; i < 4; i++) {
+          const inp = document.getElementById(`rename-input-${i}`);
+          // Live auto-save as the user types!
+          inp.addEventListener('input', () => {
+            commitTaskRenames();
+          });
+          // Pressing Enter saves and closes panel
+          inp.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+              ev.preventDefault();
+              commitTaskRenames();
+              renamePanel.classList.add('hidden');
+              showGentleHint('Task names saved!', false);
+            }
+          });
+        }
+
+        document.getElementById('edit-tasks-btn').addEventListener('click', () => {
+          const isHidden = renamePanel.classList.contains('hidden');
+          if (isHidden) {
+            renameBackupNames = [...state.taskNames];
+            for (let i = 0; i < 4; i++) {
+              document.getElementById(`rename-input-${i}`).value = state.taskNames[i];
+            }
+            renamePanel.classList.remove('hidden');
+            document.getElementById('rename-input-0').focus();
+          } else {
+            commitTaskRenames();
+            renamePanel.classList.add('hidden');
+            showGentleHint('Task names saved!', false);
+          }
+        });
+
+        document.getElementById('cancel-rename-btn').addEventListener('click', () => {
+          state.taskNames = [...renameBackupNames];
+          saveState();
+          renamePanel.classList.add('hidden');
+          renderAll();
+        });
+
+        document.getElementById('save-rename-btn').addEventListener('click', () => {
+          commitTaskRenames();
+          renamePanel.classList.add('hidden');
+          showGentleHint('Task names saved!', false);
+        });
+
+        // Past-Day Lock / Recovery Toggle Listener (Future days Day 4+ stay ALWAYS locked!)
+        document.getElementById('future-lock-btn').addEventListener('click', () => {
+          state.lockFutureDays = !state.lockFutureDays;
+          saveState(state.lockFutureDays ? 'All past days locked & saved' : 'Past recovery mode active');
+          renderAll();
+          showGentleHint(
+            state.lockFutureDays
+              ? '🔒 Past days locked & saved! Only Today is open (Future days stay locked).'
+              : '🛠️ Past-Day Recovery ON: You can now mark/restore past days (Day 1–Yesterday). Future days stay locked!',
+            false
+          );
+        });
+
+        // Explicit Save & Lock button inside Marker panel
+        document.getElementById('manual-save-btn').addEventListener('click', () => {
+          state.lockFutureDays = true;
+          saveState('✓ All Marks Saved & Locked!');
+          renderAll();
+          showGentleHint('✅ All marked habits & names saved and past days locked!', false);
+        });
+
+        // Save Standalone App (.html) with current progress embedded inside
+        document.getElementById('save-standalone-btn').addEventListener('click', () => {
+          saveState();
+          const doctype = '<!DOCTYPE html>\n';
+          const htmlContent = doctype + document.documentElement.outerHTML;
+          const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = '1000-day-habit-tracker.html';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showGentleHint('Standalone app (.html) downloaded with your saved progress!', false);
+        });
+
+        // 100-Day Block Tabs Selection
+        document.getElementById('block-tabs-container').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-block-tab]');
+          if (!btn) return;
+          currentBlockIndex = Number(btn.getAttribute('data-block-tab'));
+          closeUndoPrompt();
+          renderBlockTabs();
+          renderGrid();
+        });
+
+        // Day-Box Click & Note Button Click (Delegated on #days-grid)
+        document.getElementById('days-grid').addEventListener('click', (e) => {
+          const noteBtn = e.target.closest('[data-note-btn]');
+          if (noteBtn) {
+            e.stopPropagation();
+            const dNum = Number(noteBtn.getAttribute('data-note-btn'));
+            openNoteModal(dNum);
+            return;
+          }
+
+          const box = e.target.closest('[data-day-box]');
+          if (!box) return;
+          const dayNum = Number(box.getAttribute('data-day-box'));
+          handleDayBoxTap(dayNum);
+        });
+
+        // Undo Bar / Past-Day Recovery Confirmation
+        document.getElementById('confirm-undo-btn').addEventListener('click', () => {
+          if (!pendingUndo) return;
+          if (pendingUndo.mode === 'recover_past') {
+            const targetDay = pendingUndo.dayNum;
+            state.lockFutureDays = false;
+            saveState('Past recovery unlocked');
+            closeUndoPrompt();
+            renderAll();
+            showGentleHint(`🔓 Past Day ${targetDay} unlocked! Pick a task on the left, tap Day ${targetDay}, then click "Save & Lock".`, false);
+            return;
+          }
+          const { dayNum, taskIndex } = pendingUndo;
+          const rec = getDayRecord(dayNum);
+          rec.tasks[taskIndex] = false;
+          setDayRecord(dayNum, rec.tasks, rec.note);
+          closeUndoPrompt();
+          renderAll();
+        });
+
+        document.getElementById('cancel-undo-btn').addEventListener('click', () => {
+          closeUndoPrompt();
+        });
+
+        // Start Date Picker
+        document.getElementById('start-date-input').addEventListener('change', (e) => {
+          const val = e.target.value;
+          if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            state.startDate = val;
+            state.userChangedStartDate = true;
+            saveState();
+            renderAll();
+            scrollToTodayBox(true);
+          }
+        });
+
+        // Jump to Today Button
+        document.getElementById('jump-today-btn').addEventListener('click', () => {
+          scrollToTodayBox(true);
+        });
+
+        // Sound Mute & Volume Slider
+        document.getElementById('mute-toggle-btn').addEventListener('click', () => {
+          state.muted = !state.muted;
+          saveState();
+          renderAudioControls();
+        });
+
+        document.getElementById('volume-slider').addEventListener('input', (e) => {
+          state.volume = Number(e.target.value) / 100;
+          if (state.volume > 0 && state.muted) {
+            state.muted = false;
+          }
+          saveState();
+          renderAudioControls();
+        });
+
+        // Dark / Light Mode Toggle
+        document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+          state.theme = state.theme === 'dark' ? 'light' : 'dark';
+          saveState();
+          applyTheme();
+        });
+
+        // Milestone Chips Preview / Replay
+        document.getElementById('milestone-chips').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-milestone-preview]');
+          if (!btn) return;
+          const days = Number(btn.getAttribute('data-milestone-preview'));
+          const mObj = MILESTONES.find(m => m.days === days);
+          if (!mObj) return;
+          const { current, longest } = computeStreaks();
+          if (longest >= days || current >= days) {
+            playMilestoneGrandSound();
+            launchDayCompleteShower(true);
+            triggerMilestoneModal(mObj);
+          } else {
+            showGentleHint(`Reach a ${days}-day Gold streak to unlock this celebration!`, false);
+          }
+        });
+
+        document.getElementById('close-milestone-btn').addEventListener('click', () => {
+          const modal = document.getElementById('milestone-modal');
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        });
+
+        // Daily Note Modal Buttons
+        document.getElementById('close-note-modal-btn').addEventListener('click', closeNoteModal);
+        document.getElementById('cancel-note-btn').addEventListener('click', closeNoteModal);
+        document.getElementById('save-note-btn').addEventListener('click', saveActiveNote);
+        document.getElementById('clear-note-btn').addEventListener('click', () => {
+          document.getElementById('note-textarea').value = '';
+          saveActiveNote();
+        });
+
+        // Backup Modal (Export / Import JSON)
+        const backupModal = document.getElementById('backup-modal');
+        const backupTextarea = document.getElementById('backup-json-textarea');
+        const statusMsg = document.getElementById('backup-status-msg');
+
+        function showBackupStatus(text, isError) {
+          statusMsg.textContent = text;
+          statusMsg.className = `text-xs font-semibold mb-3 ${isError ? 'text-rose-500' : 'text-emerald-500'}`;
+          statusMsg.classList.remove('hidden');
+        }
+
+        document.getElementById('open-backup-btn').addEventListener('click', () => {
+          backupTextarea.value = JSON.stringify(state, null, 2);
+          statusMsg.classList.add('hidden');
+          backupModal.classList.remove('hidden');
+          backupModal.classList.add('flex');
+        });
+
+        function closeBackupModal() {
+          backupModal.classList.add('hidden');
+          backupModal.classList.remove('flex');
+        }
+
+        document.getElementById('close-backup-modal-btn').addEventListener('click', closeBackupModal);
+        document.getElementById('close-backup-footer-btn').addEventListener('click', closeBackupModal);
+
+        document.getElementById('download-json-btn').addEventListener('click', () => {
+          const dataStr = JSON.stringify(state, null, 2);
+          const blob = new Blob([dataStr], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `habit-tracker-1000-backup-${getTodayLocalISO()}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showBackupStatus('Backup .json downloaded!', false);
+        });
+
+        document.getElementById('copy-json-btn').addEventListener('click', () => {
+          backupTextarea.select();
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(backupTextarea.value).catch(() => {
+                document.execCommand('copy');
+              });
+            } else {
+              document.execCommand('copy');
+            }
+            showBackupStatus('Copied JSON backup to clipboard!', false);
+          } catch (err) {
+            document.execCommand('copy');
+            showBackupStatus('Copied JSON backup!', false);
+          }
+        });
+
+        function importStateFromJSONString(rawJson) {
+          try {
+            const parsed = JSON.parse(rawJson);
+            if (!parsed || typeof parsed !== 'object' || !parsed.days) {
+              showBackupStatus('Invalid backup JSON: missing habit data.', true);
+              return;
+            }
+            if (typeof parsed.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.startDate)) {
+              state.startDate = parsed.startDate;
+            }
+            if (Array.isArray(parsed.taskNames) && parsed.taskNames.length === 4) {
+              state.taskNames = parsed.taskNames.map((n, i) => String(n || TASK_THEMES[i].defaultName).trim() || TASK_THEMES[i].defaultName);
+            }
+            state.days = parsed.days;
+            saveState();
+            renderAll();
+            showBackupStatus('Progress restored! All 1000 days updated.', false);
+          } catch (err) {
+            showBackupStatus('Could not parse JSON. Check the format and try again.', true);
+          }
+        }
+
+        document.getElementById('load-pasted-json-btn').addEventListener('click', () => {
+          importStateFromJSONString(backupTextarea.value);
+        });
+
+        document.getElementById('upload-json-input').addEventListener('change', (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const content = String(ev.target.result || '');
+            backupTextarea.value = content;
+            importStateFromJSONString(content);
+          };
+          reader.readAsText(file);
+        });
+
+        // Keyboard Shortcuts (1-4 to pick a task on laptop, Escape to clear selection / close modals)
+        window.addEventListener('keydown', (e) => {
+          const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+          if (tag === 'input' || tag === 'textarea') {
+            if (e.key === 'Escape') {
+              e.target.blur();
+            }
+            return;
+          }
+          if (e.key >= '1' && e.key <= '4') {
+            const idx = Number(e.key) - 1;
+            selectedTaskIndex = selectedTaskIndex === idx ? null : idx;
+            closeUndoPrompt();
+            renderMarkerPanel();
+            renderGrid();
+          } else if (e.key === 'Escape') {
+            closeUndoPrompt();
+            closeNoteModal();
+            closeBackupModal();
+            if (selectedTaskIndex !== null) {
+              selectedTaskIndex = null;
+              renderMarkerPanel();
+              renderGrid();
+            }
+          }
+        });
+      }
+
+      // =========================================================================
+      // 14. INITIALIZATION
+      // =========================================================================
+      loadState();
+      setupEventListeners();
+      renderAll();
+      // Auto-select Today's block and scroll to Today's box on load
+      window.addEventListener('load', () => {
+        scrollToTodayBox(true);
+      });
+    })();
+  </script>
+</body>
+</html>

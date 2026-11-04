@@ -1,0 +1,6 @@
+{
+  "name": "1000-Day Habit Tracker Pro",
+  "description": "An interactive 1000-day habit mastery studio with pick-and-tap tracking, procedural Web Audio synthesis, particle physics celebrations, macro heatmaps, focus timer, and standalone offline backups.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
